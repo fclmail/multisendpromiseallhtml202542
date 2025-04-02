@@ -6,13 +6,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Send Crypto with MetaMask on Polygon</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        textarea, input {
+            width: 100%;
+            padding: 10px;
+            font-size: 1em;
+            margin-bottom: 10px;
+        }
+        textarea {
+            height: 150px; /* Increased for better visibility */
+        }
+        button {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            font-size: 1em;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #status {
+            margin-top: 10px;
+            font-weight: bold;
+            color: red;
+        }
+    </style>
 </head>
 <body>
     <h1>Send Crypto on Polygon Network</h1>
+
     <button id="connectWallet">Connect to MetaMask</button>
     <p id="walletStatus">Not connected</p>
-    <input type="file" id="csvFile" accept=".csv, .txt" />
-    <textarea id="addressInput" placeholder="Enter each recipient on a new line: address,amount"></textarea>
+
+    <label for="tokenAddress">Token Contract Address (leave empty for MATIC):</label>
+    <input type="text" id="tokenAddress" placeholder="0x... (Enter ERC-20 token address if sending tokens)" />
+
+    <label for="addressInput">Paste Addresses and Amounts (one per line):</label>
+    <textarea id="addressInput" placeholder="Enter each recipient on a new line: 0x... , 100"></textarea>
+
     <button id="sendButton">Send Crypto</button>
     <p id="status"></p>
 
@@ -23,7 +62,7 @@
             if (window.ethereum) {
                 try {
                     provider = new ethers.providers.Web3Provider(window.ethereum);
-                    await provider.send('eth_requestAccounts', []); // Request permission
+                    await provider.send('eth_requestAccounts', []);
                     signer = provider.getSigner();
                     const address = await signer.getAddress();
                     document.getElementById('walletStatus').innerText = `Connected: ${address}`;
@@ -54,6 +93,7 @@
             }
             
             const addressInput = document.getElementById('addressInput').value;
+            const tokenAddress = document.getElementById('tokenAddress').value.trim();
             let recipients = parseCSV(addressInput);
             
             if (recipients.length === 0) {
@@ -61,7 +101,7 @@
                 return;
             }
 
-            await sendCrypto(recipients);
+            await sendCrypto(recipients, tokenAddress);
         });
 
         function parseCSV(content) {
@@ -73,18 +113,37 @@
             }).filter(Boolean);
         }
 
-        async function sendCrypto(recipients) {
+        async function sendCrypto(recipients, tokenAddress) {
             try {
-                const transactions = recipients.map(async recipient => {
-                    const tx = {
-                        to: recipient.address,
-                        value: ethers.utils.parseEther(recipient.amount),
-                    };
-                    const txResponse = await signer.sendTransaction(tx);
-                    return txResponse.wait();
-                });
+                if (tokenAddress === "") {
+                    // Sending MATIC
+                    const transactions = recipients.map(async recipient => {
+                        const tx = {
+                            to: recipient.address,
+                            value: ethers.utils.parseEther(recipient.amount),
+                        };
+                        const txResponse = await signer.sendTransaction(tx);
+                        return txResponse.wait();
+                    });
 
-                await Promise.all(transactions);
+                    await Promise.all(transactions);
+                } else {
+                    // Sending ERC-20 Token
+                    const tokenContract = new ethers.Contract(
+                        tokenAddress,
+                        ["function transfer(address to, uint256 value) public returns (bool)"],
+                        signer
+                    );
+
+                    const transactions = recipients.map(async recipient => {
+                        const amountInUnits = ethers.utils.parseUnits(recipient.amount, 18); // Adjust decimals if needed
+                        const txResponse = await tokenContract.transfer(recipient.address, amountInUnits);
+                        return txResponse.wait();
+                    });
+
+                    await Promise.all(transactions);
+                }
+
                 document.getElementById('status').innerText = 'All transactions completed.';
             } catch (error) {
                 handleError(`Error: ${error.message}`);
@@ -98,3 +157,4 @@
     </script>
 </body>
 </html>
+
