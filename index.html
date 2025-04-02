@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Crypto with MetaMask on Polygon</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+</head>
+<body>
+    <h1>Send Crypto on Polygon Network</h1>
+    <button id="connectWallet">Connect to MetaMask</button>
+    <p id="walletStatus">Not connected</p>
+    <input type="file" id="csvFile" accept=".csv, .txt" />
+    <textarea id="addressInput" placeholder="Enter each recipient on a new line: address,amount"></textarea>
+    <button id="sendButton">Send Crypto</button>
+    <p id="status"></p>
+
+    <script>
+        let signer;
+
+        document.getElementById('connectWallet').addEventListener('click', async () => {
+            if (window.ethereum) {
+                try {
+                    const provider = new ethers.providers.Web3Provider(window.ethereum);
+                    signer = provider.getSigner();
+                    await provider.send('eth_requestAccounts', []);
+                    const address = await signer.getAddress();
+                    document.getElementById('walletStatus').innerText = `Connected: ${address}`;
+                } catch (error) {
+                    handleError(`Connection failed: ${error.message}`);
+                }
+            } else {
+                handleError('MetaMask is not installed.');
+            }
+        });
+
+        document.getElementById('sendButton').addEventListener('click', async () => {
+            const addressInput = document.getElementById('addressInput').value;
+            if (!signer) {
+                document.getElementById('status').innerText = 'Please connect your wallet first.';
+                return;
+            }
+            let recipients = parseCSV(addressInput);
+            await sendCrypto(recipients);
+        });
+
+        function parseCSV(content) {
+            return content.trim().split('\n').map(line => {
+                const [address, amount] = line.split(',');
+                return { address: address.trim(), amount: amount.trim() };
+            }).filter(recipient => ethers.utils.isAddress(recipient.address));
+        }
+
+        async function sendCrypto(recipients) {
+            try {
+                const transactions = recipients.map(async recipient => {
+                    const tx = {
+                        to: recipient.address,
+                        value: ethers.utils.parseEther(recipient.amount),
+                    };
+                    const txResponse = await signer.sendTransaction(tx);
+                    return txResponse.wait();
+                });
+
+                await Promise.all(transactions);
+                document.getElementById('status').innerText = 'All transactions completed.';
+            } catch (error) {
+                handleError(`Error: ${error.message}`);
+            }
+        }
+
+        function handleError(errorMessage) {
+            console.error(errorMessage);
+            document.getElementById('status').innerText = errorMessage;
+        }
+    </script>
+</body>
+</html>
